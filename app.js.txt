@@ -8,7 +8,7 @@
      POST ?action=confirm&token=...   body: { clientId, pendingId, name }
 ========================= */
 
-const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev/";
+const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev";
 
 
 const LS_TOKEN = "fin_api_token";
@@ -347,3 +347,4 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
