@@ -343,13 +343,21 @@ async function refreshList(month) {
 
 async function refreshAnalysis(month) {
   const token = getToken();
-  if (!token) return;
+  if (!token) {
+    showToast("Defina o token em 🔑 Token", "err");
+    return;
+  }
 
   const res = await apiGet("totals", month ? { month } : {});
-  if (!res || res.ok !== true) return;
+  if (!res || res.ok !== true) {
+    console.log("totals FAIL:", res);
+    showToast(res?.error || "Falha ao carregar totals (veja o console)", "err");
+    return;
+  }
 
   renderAnalysisTotals(res);
 }
+
 
 async function refreshAll() {
   const month = getActiveMonth();
@@ -522,3 +530,4 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
