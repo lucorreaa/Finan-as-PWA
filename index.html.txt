@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>Finanças PWA (MVP)</title>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#0f172a; --muted:#94a3b8; --text:#e5e7eb;
+      --border:rgba(148,163,184,.22);
+      --btn:#2563eb; --btn2:#111827;
+      --good:#22c55e; --bad:#ef4444;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:18px;
+    }
+    [data-theme="light"]{
+      --bg:#f5f7fb; --card:#ffffff; --muted:#475569; --text:#0f172a;
+      --border:rgba(15,23,42,.12);
+      --btn:#2563eb; --btn2:#e2e8f0;
+      --shadow: 0 10px 30px rgba(15,23,42,.10);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+      background:var(--bg); color:var(--text);
+    }
+    .wrap{ max-width:980px; margin:0 auto; padding:20px; }
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:14px 16px; border:1px solid var(--border); background:var(--card);
+      border-radius:var(--radius); box-shadow:var(--shadow);
+    }
+    .title{ font-weight:800; letter-spacing:.2px; }
+    .subtitle{ color:var(--muted); font-size:13px; margin-top:2px; }
+    .row{ display:flex; gap:12px; flex-wrap:wrap; }
+    .btn{
+      border:1px solid var(--border); background:var(--btn2); color:var(--text);
+      padding:10px 12px; border-radius:12px; cursor:pointer;
+      font-weight:700; letter-spacing:.2px;
+    }
+    .btn.primary{ background:var(--btn); border-color:transparent; }
+    .btn:disabled{ opacity:.6; cursor:not-allowed; }
+
+    .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap:14px; margin-top:14px; }
+    @media (max-width: 920px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card{
+      border:1px solid var(--border); background:var(--card);
+      border-radius:var(--radius); box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .card h3{ margin:0 0 10px; font-size:16px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    textarea, input{
+      width:100%; border:1px solid var(--border); background:transparent; color:var(--text);
+      padding:12px; border-radius:14px; outline:none; font-size:14px;
+    }
+    textarea{ min-height:88px; resize:vertical; }
+    .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px; border-radius:999px; border:1px solid var(--border);
+      color:var(--muted); font-size:12px;
+    }
+
+    .list{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+    .item{
+      border:1px solid var(--border); border-radius:14px; padding:12px;
+      display:flex; justify-content:space-between; gap:12px;
+    }
+    .item strong{ display:block; }
+    .tag{
+      font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid var(--border);
+      color:var(--muted);
+    }
+    .right{ text-align:right; min-width:120px; }
+    .ok{ color:var(--good); }
+    .err{ color:var(--bad); }
+
+    .toast{
+      margin-top:10px; padding:10px 12px; border-radius:14px;
+      border:1px solid var(--border); background:rgba(0,0,0,.08);
+      font-size:13px; white-space:pre-line;
+    }
+
+    /* Modal */
+    .backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      display:none; align-items:center; justify-content:center; padding:18px;
+    }
+    .backdrop.show{ display:flex; }
+    .modal{
+      width:min(560px, 100%);
+      border:1px solid var(--border); background:var(--card);
+      border-radius:20px; box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .modal h3{ margin:0 0 6px; }
+    .modal .muted{ margin-bottom:10px; }
+    .hr{ height:1px; background:var(--border); margin:12px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="title">💸 Finanças (MVP)</div>
+        <div class="subtitle">Apps Script + Sheets • modo humano</div>
+      </div>
+      <div class="row">
+        <button class="btn" id="themeBtn">🌙/☀️</button>
+        <button class="btn" id="tokenBtn">🔑 Token</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Registrar</h3>
+        <div class="muted">Ex.: “passei no mercado hoje e deu 12,50 no débito pra alimentação”</div>
+        <textarea id="inputText" placeholder="Digite aqui..."></textarea>
+
+        <div class="actions">
+          <button class="btn primary" id="sendBtn">Enviar</button>
+          <button class="btn" id="helpBtn">Help</button>
+          <button class="btn" id="refreshBtn">Atualizar lista</button>
+        </div>
+
+        <div class="toast" id="toast" style="display:none;"></div>
+
+        <div class="actions" style="margin-top:12px;">
+          <span class="pill" id="netPill">🌐 verificando...</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Últimos lançamentos</h3>
+        <div class="muted" id="monthLabel">—</div>
+        <div class="list" id="list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal confirmação -->
+  <div class="backdrop" id="backdrop">
+    <div class="modal">
+      <h3>Confirmar nome/descrição</h3>
+      <div class="muted" id="confirmMsg">—</div>
+
+      <div class="hr"></div>
+
+      <label class="muted">Nome sugerido (você pode editar):</label>
+      <input id="nameEdit" placeholder="Ex.: Mercado" />
+
+      <div class="actions">
+        <button class="btn primary" id="confirmBtn">Confirmar</button>
+        <button class="btn" id="cancelPendingBtn">Cancelar</button>
+      </div>
+
+      <div class="toast" id="confirmToast" style="display:none;"></div>
+    </div>
+  </div>
+  <?!= include("AppJs"); ?>
+</body>
+</html>
