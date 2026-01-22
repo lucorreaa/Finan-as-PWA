@@ -161,6 +161,7 @@
       <div class="toast" id="confirmToast" style="display:none;"></div>
     </div>
   </div>
-  <?!= include("AppJs"); ?>
+  <script src="app.js"></script>
 </body>
 </html>
+
