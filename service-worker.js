@@ -1,4 +1,4 @@
-const CACHE = "financas-pwa-v1";
+const CACHE = "financas-pwa-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -35,4 +35,16 @@ self.addEventListener("fetch", (e) => {
     caches.match(req).then((cached) => cached || fetch(req))
   );
 });
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  // ✅ NÃO intercepta chamadas da sua API (Worker)
+  if (url.origin === "https://noisy-flower-1665.luca02699.workers.dev") {
+    return; // deixa o navegador ir direto na rede
+  }
+
+  // (resto do seu fetch handler continua aqui)
+});
+
 
