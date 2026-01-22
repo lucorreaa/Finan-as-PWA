@@ -1,25 +1,51 @@
-
 /* =========================
    Finanças PWA (MVP) - app.js
-   Compatível com o seu index.html
-   - Sem CORS: token via querystring (NÃO usa header custom)
+   Compatível com o seu index.html (tabs + análise)
+   - Token via querystring (NÃO usa header custom)
    - API esperada:
      GET  ?action=list&limit=30&token=...
      POST ?action=process&token=...   body: { clientId, text }
      POST ?action=confirm&token=...   body: { clientId, pendingId, name }
 ========================= */
 
-const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev";
+const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev"; // sem barra no final é ok
 
 const LS_TOKEN = "fin_api_token";
 const LS_THEME = "fin_theme";
-const LS_TAB = "fin_active_tab"; // registrar | analise | historico
+const LS_TAB = "fin_active_tab"; // viewReg | viewAna | viewHis
 
 let pendingState = null; // { pendingId, proposedName, message }
 
 const $ = (id) => document.getElementById(id);
 
-// ---------- UI helpers ----------
+// ---------- Helpers ----------
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function parseBRL(v) {
+  // aceita "R$ 12,50" / "12,50" / 12.5
+  if (typeof v === "number") return v;
+  const s = String(v || "")
+    .replace("R$", "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .trim();
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatBRL(n) {
+  const num = Number(n || 0);
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// ---------- Toast ----------
 function showToast(msg, type = "") {
   const el = $("toast");
   if (!el) return;
@@ -44,15 +70,6 @@ function setNetPill(online) {
   const el = $("netPill");
   if (!el) return;
   el.textContent = online ? "🟢 online" : "🔴 offline";
-}
-
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 // ---------- Token ----------
@@ -88,28 +105,29 @@ function toggleTheme() {
   setTheme(cur === "dark" ? "light" : "dark");
 }
 
-// ---------- Tabs ----------
+// ---------- Tabs (bate com seu index) ----------
 function getActiveTab() {
-  return localStorage.getItem(LS_TAB) || "registrar";
+  return localStorage.getItem(LS_TAB) || "viewReg";
 }
 
-function setActiveTab(tab) {
-  localStorage.setItem(LS_TAB, tab);
+function setActiveTab(viewId) {
+  localStorage.setItem(LS_TAB, viewId);
 
-  // botões
-  ["registrar", "analise", "historico"].forEach((t) => {
-    const btn = document.getElementById(`tab-${t}`);
-    if (btn) btn.classList.toggle("active", t === tab);
-  });
+  const tabs = [
+    { btn: "tabReg", view: "viewReg" },
+    { btn: "tabAna", view: "viewAna" },
+    { btn: "tabHis", view: "viewHis" },
+  ];
 
-  // views
-  ["registrar", "analise", "historico"].forEach((t) => {
-    const view = document.getElementById(`view-${t}`);
-    if (view) view.style.display = t === tab ? "" : "none";
+  tabs.forEach(t => {
+    const b = document.getElementById(t.btn);
+    const v = document.getElementById(t.view);
+    if (b) b.classList.toggle("active", t.view === viewId);
+    if (v) v.classList.toggle("show", t.view === viewId);
   });
 }
 
-// ---------- API (SEM header custom => evita preflight) ----------
+// ---------- API ----------
 function buildUrl(action, params = {}) {
   const token = getToken().trim();
   const qs = new URLSearchParams({ action, token, ...params });
@@ -120,31 +138,23 @@ async function apiGet(action, params = {}) {
   const url = buildUrl(action, params);
   const resp = await fetch(url);
   const text = await resp.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { ok: false, error: "Resposta inválida do servidor.", raw: text };
-  }
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
 }
 
 async function apiPost(action, body = {}) {
   const url = buildUrl(action);
-
   const resp = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" }, // ✅ evita preflight
-    body: JSON.stringify(body || {}),
+    headers: { "Content-Type": "text/plain;charset=utf-8" }, // evita preflight
+    body: JSON.stringify(body || {})
   });
-
   const text = await resp.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { ok: false, error: "Resposta inválida do servidor.", raw: text };
-  }
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
 }
 
-// ---------- Render list ----------
+// ---------- List (Registrar) ----------
 function renderList(items = []) {
   const box = $("list");
   if (!box) return;
@@ -154,29 +164,114 @@ function renderList(items = []) {
     return;
   }
 
-  box.innerHTML = items
-    .map((it) => {
+  box.innerHTML = items.map(it => {
+    const nome = escapeHtml(it.nome || "");
+    const data = escapeHtml(it.data || "");
+    const tipo = escapeHtml(it.tipo || "");
+    const categoria = escapeHtml(it.categoria || "");
+    const valor = escapeHtml(it.valor || "");
+    const source = escapeHtml(it.source || "");
+
+    const extra = it.extra
+      ? `<div class="muted" style="margin-top:6px;">
+           ${escapeHtml(it.extra.parcelas || "")}x • Total ${escapeHtml(it.extra.total || "")}
+         </div>`
+      : "";
+
+    return `
+      <div class="item">
+        <div>
+          <strong>${nome}</strong>
+          <div class="muted">${data} • ${tipo} • ${categoria}</div>
+          ${extra}
+        </div>
+        <div class="right">
+          <div class="tag">${source}</div>
+          <div style="margin-top:6px; font-weight:800;">${valor}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ---------- Análise ----------
+function renderAnalysis(res) {
+  const items = res?.items || [];
+  const month = res?.month || "—";
+
+  const mes = items.filter(x => x.source === "MES");
+  const fixos = items.filter(x => x.source === "FIXOS");
+  const parc = items.filter(x => x.source === "PARCELADOS");
+
+  const totalMes = mes.reduce((a, x) => a + parseBRL(x.valor), 0);
+  const totalFixos = fixos.reduce((a, x) => a + parseBRL(x.valor), 0);
+  const totalParc = parc.reduce((a, x) => a + parseBRL(x.valor), 0);
+
+  const totalCredito = mes
+    .filter(x => String(x.tipo || "").toLowerCase().includes("crédito"))
+    .reduce((a, x) => a + parseBRL(x.valor), 0);
+
+  // saldo estimado (por enquanto)
+  const saldoEstimado = 0 - (totalMes + totalFixos + totalParc);
+
+  $("anaMonthLabel") && ($("anaMonthLabel").textContent = month);
+
+  $("kpiGastosMes") && ($("kpiGastosMes").textContent = formatBRL(totalMes));
+  $("kpiCredito") && ($("kpiCredito").textContent = formatBRL(totalCredito));
+  $("kpiParcelados") && ($("kpiParcelados").textContent = formatBRL(totalParc));
+  $("kpiSaldo") && ($("kpiSaldo").textContent = formatBRL(saldoEstimado));
+
+  $("kpiGastosMesHint") && ($("kpiGastosMesHint").textContent = "Somente lançamentos do mês (MES).");
+  $("kpiSaldoHint") && ($("kpiSaldoHint").textContent = "Saldo estimado (vamos conectar no saldo real depois).");
+
+  // top categorias (MES)
+  const catMap = new Map();
+  mes.forEach(x => {
+    const cat = (x.categoria || "Outros").trim() || "Outros";
+    catMap.set(cat, (catMap.get(cat) || 0) + parseBRL(x.valor));
+  });
+
+  const topCats = [...catMap.entries()]
+    .map(([categoria, valor]) => ({ categoria, valor }))
+    .sort((a,b) => b.valor - a.valor)
+    .slice(0, 5);
+
+  const barsBox = $("barsTopCats");
+  if (barsBox) {
+    if (!topCats.length) {
+      barsBox.innerHTML = `<div class="muted">—</div>`;
+    } else {
+      const max = Math.max(...topCats.map(x => x.valor), 1);
+      barsBox.innerHTML = topCats.map(x => {
+        const pct = Math.round((x.valor / max) * 100);
+        return `
+          <div style="display:grid; grid-template-columns: 140px 1fr 120px; gap:10px; align-items:center; margin-top:10px;">
+            <div class="muted" style="font-weight:800;">${escapeHtml(x.categoria)}</div>
+            <div class="barTrack"><div class="barFill" style="width:${pct}%;"></div></div>
+            <div style="text-align:right; font-weight:900;">${formatBRL(x.valor)}</div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  // últimos (6)
+  const lastBox = $("anaList");
+  if (lastBox) {
+    const last = items.slice(0, 6);
+    if (!last.length) lastBox.innerHTML = `<div class="muted">—</div>`;
+    else lastBox.innerHTML = last.map(it => {
       const nome = escapeHtml(it.nome || "");
       const data = escapeHtml(it.data || "");
       const tipo = escapeHtml(it.tipo || "");
       const categoria = escapeHtml(it.categoria || "");
       const valor = escapeHtml(it.valor || "");
       const source = escapeHtml(it.source || "");
-
-      const extra = it.extra
-        ? `<div class="muted" style="margin-top:6px;">
-             ${escapeHtml(it.extra.parcelas || "")}x • Total ${escapeHtml(
-            it.extra.total || ""
-          )}
-           </div>`
-        : "";
-
       return `
         <div class="item">
           <div>
             <strong>${nome}</strong>
             <div class="muted">${data} • ${tipo} • ${categoria}</div>
-            ${extra}
           </div>
           <div class="right">
             <div class="tag">${source}</div>
@@ -184,130 +279,7 @@ function renderList(items = []) {
           </div>
         </div>
       `;
-    })
-    .join("");
-}
-
-// ---------- ANÁLISE ----------
-function parseBRL(v) {
-  if (typeof v === "number") return v;
-  const s = String(v || "")
-    .replace("R$", "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .trim();
-  const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatBRL(n) {
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function buildAnalysis(items = []) {
-  const mes = items.filter((x) => x.source === "MES");
-  const fixos = items.filter((x) => x.source === "FIXOS");
-  const parc = items.filter((x) => x.source === "PARCELADOS");
-
-  const totalMes = mes.reduce((acc, x) => acc + parseBRL(x.valor), 0);
-  const totalFixos = fixos.reduce((acc, x) => acc + parseBRL(x.valor), 0);
-  const totalParc = parc.reduce((acc, x) => acc + parseBRL(x.valor), 0);
-
-  const totalCredito = mes
-    .filter((x) => String(x.tipo || "").toLowerCase().includes("crédito"))
-    .reduce((acc, x) => acc + parseBRL(x.valor), 0);
-
-  const catMap = new Map();
-  mes.forEach((x) => {
-    const cat = (x.categoria || "Outros").trim() || "Outros";
-    const v = parseBRL(x.valor);
-    catMap.set(cat, (catMap.get(cat) || 0) + v);
-  });
-
-  const topCats = [...catMap.entries()]
-    .map(([categoria, valor]) => ({ categoria, valor }))
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 5);
-
-  return {
-    totalMes,
-    totalFixos,
-    totalParc,
-    totalCredito,
-    topCats,
-    ultimos: items.slice(0, 6),
-  };
-}
-
-function renderAnalysis(res) {
-  const items = res?.items || [];
-  const month = res?.month || "—";
-  const a = buildAnalysis(items);
-
-  const elMonth = document.getElementById("analiseMonthLabel");
-  if (elMonth) elMonth.textContent = month;
-
-  const elGastosMes = document.getElementById("cardGastosMes");
-  if (elGastosMes) elGastosMes.textContent = formatBRL(a.totalMes);
-
-  const elCredito = document.getElementById("cardCredito");
-  if (elCredito) elCredito.textContent = formatBRL(a.totalCredito);
-
-  const elParcelados = document.getElementById("cardParcelados");
-  if (elParcelados) elParcelados.textContent = formatBRL(a.totalParc);
-
-  const elFixos = document.getElementById("cardFixos");
-  if (elFixos) elFixos.textContent = formatBRL(a.totalFixos);
-
-  const topBox = document.getElementById("topCats");
-  if (topBox) {
-    if (!a.topCats.length) {
-      topBox.innerHTML = `<div class="muted">—</div>`;
-    } else {
-      const max = Math.max(...a.topCats.map((x) => x.valor), 1);
-      topBox.innerHTML = a.topCats
-        .map((x) => {
-          const pct = Math.round((x.valor / max) * 100);
-          return `
-            <div class="catRow">
-              <div class="catName">${escapeHtml(x.categoria)}</div>
-              <div class="catBar"><div class="catFill" style="width:${pct}%;"></div></div>
-              <div class="catVal">${formatBRL(x.valor)}</div>
-            </div>
-          `;
-        })
-        .join("");
-    }
-  }
-
-  const lastBox = document.getElementById("analiseLast");
-  if (lastBox) {
-    const last = a.ultimos || [];
-    if (!last.length) lastBox.innerHTML = `<div class="muted">—</div>`;
-    else
-      lastBox.innerHTML = last
-        .map((it) => {
-          const nome = escapeHtml(it.nome || "");
-          const data = escapeHtml(it.data || "");
-          const tipo = escapeHtml(it.tipo || "");
-          const categoria = escapeHtml(it.categoria || "");
-          const valor = escapeHtml(it.valor || "");
-          const source = escapeHtml(it.source || "");
-
-          return `
-            <div class="item">
-              <div>
-                <strong>${nome}</strong>
-                <div class="muted">${data} • ${tipo} • ${categoria}</div>
-              </div>
-              <div class="right">
-                <div class="tag">${source}</div>
-                <div style="margin-top:6px; font-weight:800;">${valor}</div>
-              </div>
-            </div>
-          `;
-        })
-        .join("");
+    }).join("");
   }
 }
 
@@ -376,7 +348,7 @@ async function sendText() {
     pendingState = {
       pendingId: res.pendingId,
       proposedName: res.proposedName || "",
-      message: res.message || "Confirme para salvar.",
+      message: res.message || "Confirme para salvar."
     };
     openConfirmModal(pendingState.message, pendingState.proposedName);
     showToast("Precisa confirmar o nome/descrição.", "err");
@@ -415,7 +387,11 @@ async function confirmPending() {
 
   let res;
   try {
-    res = await apiPost("confirm", { clientId, pendingId: pendingState.pendingId, name });
+    res = await apiPost("confirm", {
+      clientId,
+      pendingId: pendingState.pendingId,
+      name
+    });
   } catch (e) {
     showConfirmToast("Erro de rede (CORS/URL).", "err");
     return;
@@ -454,12 +430,6 @@ function showHelp() {
     "",
     "Entradas:",
     "• recebi meu salário hoje 3000",
-    "",
-    "Consultas:",
-    "• resumo",
-    "• saldo",
-    "• total do mes",
-    "• top categorias",
   ].join("\n");
 
   alert(ex);
@@ -467,31 +437,42 @@ function showHelp() {
 
 // ---------- Init ----------
 function init() {
+  // tema
   setTheme(getTheme());
 
+  // net pill
   setNetPill(navigator.onLine);
   window.addEventListener("online", () => setNetPill(true));
   window.addEventListener("offline", () => setNetPill(false));
 
+  // binds registrar
   $("themeBtn")?.addEventListener("click", toggleTheme);
   $("tokenBtn")?.addEventListener("click", promptToken);
   $("sendBtn")?.addEventListener("click", sendText);
   $("helpBtn")?.addEventListener("click", showHelp);
   $("refreshBtn")?.addEventListener("click", refreshList);
 
+  // modal
   $("confirmBtn")?.addEventListener("click", confirmPending);
   $("cancelPendingBtn")?.addEventListener("click", cancelPending);
 
+  // enter para enviar (Ctrl+Enter)
   $("inputText")?.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendText();
   });
 
-  document.getElementById("tab-registrar")?.addEventListener("click", () => setActiveTab("registrar"));
-  document.getElementById("tab-analise")?.addEventListener("click", () => setActiveTab("analise"));
-  document.getElementById("tab-historico")?.addEventListener("click", () => setActiveTab("historico"));
+  // tabs
+  document.getElementById("tabReg")?.addEventListener("click", () => setActiveTab("viewReg"));
+  document.getElementById("tabAna")?.addEventListener("click", () => {
+    setActiveTab("viewAna");
+    refreshList().catch(() => {});
+  });
+  document.getElementById("tabHis")?.addEventListener("click", () => setActiveTab("viewHis"));
 
+  // ativa tab salva
   setActiveTab(getActiveTab());
 
+  // carrega lista inicial
   refreshList().catch(() => {});
 }
 
