@@ -1,0 +1,351 @@
+<script>
+/* =========================
+   Finanças PWA (MVP) - app.js
+   Compatível com o seu index.html
+   - Sem CORS: token via querystring (NÃO usa header custom)
+   - API esperada:
+     GET  ?action=list&limit=30&token=...
+     POST ?action=process&token=...   body: { clientId, text }
+     POST ?action=confirm&token=...   body: { clientId, pendingId, name }
+========================= */
+
+const API_BASE = "https://script.google.com/macros/s/AKfycbyVqBsnLUayiySfS71mEatjyBTGI7LBqnVEct-uMmyhBmiebaV-vpzNV6kuYJci4K0M/exec";
+
+
+const LS_TOKEN = "fin_api_token";
+const LS_THEME = "fin_theme";
+
+let pendingState = null; // { pendingId, proposedName, message }
+
+const $ = (id) => document.getElementById(id);
+
+// ---------- UI helpers ----------
+function showToast(msg, type = "") {
+  const el = $("toast");
+  if (!el) return;
+  el.style.display = msg ? "block" : "none";
+  el.textContent = msg || "";
+  el.classList.remove("ok", "err");
+  if (type === "ok") el.classList.add("ok");
+  if (type === "err") el.classList.add("err");
+}
+
+function showConfirmToast(msg, type = "") {
+  const el = $("confirmToast");
+  if (!el) return;
+  el.style.display = msg ? "block" : "none";
+  el.textContent = msg || "";
+  el.classList.remove("ok", "err");
+  if (type === "ok") el.classList.add("ok");
+  if (type === "err") el.classList.add("err");
+}
+
+function setNetPill(online) {
+  const el = $("netPill");
+  if (!el) return;
+  el.textContent = online ? "🟢 online" : "🔴 offline";
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// ---------- Token ----------
+function getToken() {
+  return localStorage.getItem(LS_TOKEN) || "";
+}
+
+function setToken(v) {
+  localStorage.setItem(LS_TOKEN, String(v || "").trim());
+}
+
+function promptToken() {
+  const cur = getToken();
+  const next = prompt("Cole seu API_TOKEN (o mesmo do Apps Script):", cur);
+  if (next == null) return;
+  setToken(next);
+  showToast("Token salvo ✅", "ok");
+  // tenta atualizar lista após salvar token
+  refreshList().catch(() => {});
+}
+
+// ---------- Theme ----------
+function getTheme() {
+  return localStorage.getItem(LS_THEME) || "dark";
+}
+
+function setTheme(theme) {
+  localStorage.setItem(LS_THEME, theme);
+  document.documentElement.dataset.theme = theme;
+}
+
+function toggleTheme() {
+  const cur = getTheme();
+  setTheme(cur === "dark" ? "light" : "dark");
+}
+
+// ---------- API (SEM header custom => evita preflight) ----------
+function buildUrl(action, params = {}) {
+  const token = getToken();
+  const qs = new URLSearchParams({ action, token, ...params });
+  return `${API_BASE}?${qs.toString()}`;
+}
+
+async function apiGet(action, params = {}) {
+  const url = buildUrl(action, params);
+  const resp = await fetch(url); // sem headers
+  const text = await resp.text();
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
+}
+
+async function apiPost(action, body = {}) {
+  const url = buildUrl(action); // token vai na query
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" }, // ✅ evita preflight
+    body: JSON.stringify(body || {})
+  });
+
+  const text = await resp.text();
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
+}
+
+
+// ---------- Render list ----------
+function renderList(items = []) {
+  const box = $("list");
+  if (!box) return;
+
+  if (!items.length) {
+    box.innerHTML = `<div class="muted">—</div>`;
+    return;
+  }
+
+  box.innerHTML = items.map(it => {
+    const nome = escapeHtml(it.nome || "");
+    const data = escapeHtml(it.data || "");
+    const tipo = escapeHtml(it.tipo || "");
+    const categoria = escapeHtml(it.categoria || "");
+    const valor = escapeHtml(it.valor || "");
+    const source = escapeHtml(it.source || "");
+
+    const extra = it.extra
+      ? `<div class="muted" style="margin-top:6px;">
+           ${escapeHtml(it.extra.parcelas || "")}x • Total ${escapeHtml(it.extra.total || "")}
+         </div>`
+      : "";
+
+    return `
+      <div class="item">
+        <div>
+          <strong>${nome}</strong>
+          <div class="muted">${data} • ${tipo} • ${categoria}</div>
+          ${extra}
+        </div>
+        <div class="right">
+          <div class="tag">${source}</div>
+          <div style="margin-top:6px; font-weight:800;">${valor}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ---------- Modal confirmação ----------
+function openConfirmModal(message, proposedName) {
+  pendingState = pendingState || {};
+  $("confirmMsg").textContent = message || "Confirme para salvar.";
+  $("nameEdit").value = proposedName || "";
+
+  showConfirmToast("", "");
+  $("backdrop").classList.add("show");
+}
+
+function closeConfirmModal() {
+  $("backdrop").classList.remove("show");
+  showConfirmToast("", "");
+}
+
+// ---------- Actions ----------
+async function refreshList() {
+  const token = getToken();
+  if (!token) {
+    showToast("Defina o token em 🔑 Token", "err");
+    return;
+  }
+
+  showToast("Atualizando lista...", "");
+  const res = await apiGet("list", { limit: 30 });
+
+  if (!res || res.ok !== true) {
+    // se vier CORS, geralmente aqui cai como erro de rede e nem chega JSON
+    showToast(res?.error || "Erro ao listar. Verifique token/implantação.", "err");
+    return;
+  }
+
+  $("monthLabel").textContent = res.month || "—";
+  renderList(res.items || []);
+  showToast("Lista atualizada ✅", "ok");
+}
+
+async function sendText() {
+  const token = getToken();
+  if (!token) {
+    showToast("Defina o token em 🔑 Token", "err");
+    return;
+  }
+
+  const text = ($("inputText").value || "").trim();
+  if (!text) {
+    showToast("Digite algo para enviar.", "err");
+    return;
+  }
+
+  showToast("Enviando...", "");
+  const clientId = "web"; // pode virar um ID do device no futuro
+  let res;
+
+  try {
+    res = await apiPost("process", { clientId, text });
+  } catch (e) {
+    showToast("Erro de rede (CORS/URL). Verifique implantação.", "err");
+    return;
+  }
+
+  if (res?.needsConfirm) {
+    // esperado: { needsConfirm:true, pendingId, proposedName, message }
+    pendingState = {
+      pendingId: res.pendingId,
+      proposedName: res.proposedName || "",
+      message: res.message || "Confirme para salvar."
+    };
+    openConfirmModal(pendingState.message, pendingState.proposedName);
+    showToast("Precisa confirmar o nome/descrição.", "err");
+    return;
+  }
+
+  if (!res || res.ok !== true) {
+    showToast(res?.error || res?.message || "Erro ao processar.", "err");
+    return;
+  }
+
+  $("inputText").value = "";
+  showToast(res.message || "Salvo ✅", "ok");
+  await refreshList();
+}
+
+async function confirmPending() {
+  const token = getToken();
+  if (!token) {
+    showConfirmToast("Defina o token em 🔑 Token", "err");
+    return;
+  }
+  if (!pendingState?.pendingId) {
+    showConfirmToast("Não há pendência para confirmar.", "err");
+    return;
+  }
+
+  const name = ($("nameEdit").value || "").trim();
+  if (!name) {
+    showConfirmToast("Digite um nome/descrição.", "err");
+    return;
+  }
+
+  showConfirmToast("Confirmando...", "");
+  const clientId = "web";
+
+  let res;
+  try {
+    res = await apiPost("confirm", {
+      clientId,
+      pendingId: pendingState.pendingId,
+      name
+    });
+  } catch (e) {
+    showConfirmToast("Erro de rede (CORS/URL).", "err");
+    return;
+  }
+
+  if (!res || res.ok !== true) {
+    showConfirmToast(res?.error || res?.message || "Erro ao confirmar.", "err");
+    return;
+  }
+
+  pendingState = null;
+  showConfirmToast(res.message || "Confirmado ✅", "ok");
+  closeConfirmModal();
+  showToast("Salvo ✅", "ok");
+  await refreshList();
+}
+
+function cancelPending() {
+  pendingState = null;
+  closeConfirmModal();
+  showToast("Cancelado ✅ (não salvou)", "ok");
+}
+
+// ---------- Help ----------
+function showHelp() {
+  const ex = [
+    "Gastos do mês:",
+    "• passei no mercado hoje e deu 12,50 no débito pra alimentação",
+    "• fui no shopping hoje e gastei 100 reais no crédito com vestuário",
+    "",
+    "Parcelados:",
+    "• comprei um celular de 4100 hoje parcelado em 6 vezes no crédito pra eletrônicos",
+    "",
+    "Fixos:",
+    "• assinei netflix por 39,90 no cartão pra assinaturas",
+    "",
+    "Entradas:",
+    "• recebi meu salário hoje 3000",
+    "",
+    "Consultas:",
+    "• resumo",
+    "• saldo",
+    "• total do mes",
+    "• top categorias"
+  ].join("\n");
+
+  alert(ex);
+}
+
+// ---------- Init ----------
+function init() {
+  // tema
+  setTheme(getTheme());
+
+  // net pill
+  setNetPill(navigator.onLine);
+  window.addEventListener("online", () => setNetPill(true));
+  window.addEventListener("offline", () => setNetPill(false));
+
+  // bind
+  $("themeBtn").addEventListener("click", toggleTheme);
+  $("tokenBtn").addEventListener("click", promptToken);
+  $("sendBtn").addEventListener("click", sendText);
+  $("helpBtn").addEventListener("click", showHelp);
+  $("refreshBtn").addEventListener("click", refreshList);
+
+  $("confirmBtn").addEventListener("click", confirmPending);
+  $("cancelPendingBtn").addEventListener("click", cancelPending);
+
+  // enter para enviar (Ctrl+Enter)
+  $("inputText").addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendText();
+  });
+
+  // tentativa de carregar lista
+  refreshList().catch(() => {});
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
