@@ -12,6 +12,7 @@ const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev";
 const LS_TOKEN = "fin_api_token";
 const LS_THEME = "fin_theme";
 const LS_TAB = "fin_active_tab"; // reg | ana | his
+const LS_MONTH = "fin_active_month"; // Janeiro..Dezembro
 
 let pendingState = null;
 
@@ -97,7 +98,22 @@ function toggleTheme() {
   setTheme(getTheme() === "dark" ? "light" : "dark");
 }
 
-// ---------- Tabs (index: tabReg/tabAna/tabHis + viewReg/viewAna/viewHis) ----------
+// ---------- Month select ----------
+function getCurrentMonthName() {
+  const months = [
+    "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+    "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+  ];
+  return months[new Date().getMonth()];
+}
+function getActiveMonth() {
+  return localStorage.getItem(LS_MONTH) || getCurrentMonthName();
+}
+function setActiveMonth(m) {
+  localStorage.setItem(LS_MONTH, m);
+}
+
+// ---------- Tabs (index: tab-registrar/tab-analise/tab-historico + view-registrar/view-analise/view-historico) ----------
 function getActiveTab() {
   return localStorage.getItem(LS_TAB) || "reg";
 }
@@ -106,9 +122,9 @@ function setActiveTab(tab) {
   localStorage.setItem(LS_TAB, tab);
 
   const map = {
-    reg: { btn: "tabReg", view: "viewReg" },
-    ana: { btn: "tabAna", view: "viewAna" },
-    his: { btn: "tabHis", view: "viewHis" }
+    reg: { btn: "tab-registrar", view: "view-registrar" },
+    ana: { btn: "tab-analise", view: "view-analise" },
+    his: { btn: "tab-historico", view: "view-historico" }
   };
 
   Object.keys(map).forEach((k) => {
@@ -120,7 +136,7 @@ function setActiveTab(tab) {
 
   // quando abrir Análise, atualiza KPIs
   if (tab === "ana") {
-    refreshAnalysis().catch(() => {});
+    refreshAnalysis(getActiveMonth()).catch(() => {});
   }
 }
 
@@ -211,7 +227,7 @@ function renderAnalysisTotals(resTotals) {
   if (elGm) elGm.textContent = formatBRL(t.gastosMes);
   if (elGmHint) elGmHint.textContent = `Somente “Gastos do mês”`;
 
-  // Vamos usar o card “Crédito” como FIXOS (pedido seu)
+  // seu pedido: usar esse card como FIXOS
   const elFixos = document.getElementById("kpiCredito");
   if (elFixos) elFixos.textContent = formatBRL(t.fixos);
 
@@ -220,8 +236,6 @@ function renderAnalysisTotals(resTotals) {
 }
 
 function renderTopCatsFromList(items, targetId) {
-  // Top categorias (aprox) usando os itens do mês que vierem no list (não é perfeito),
-  // depois melhoramos com um endpoint próprio se você quiser.
   const box = document.getElementById(targetId);
   if (!box) return;
 
@@ -302,7 +316,7 @@ function closeConfirmModal() {
 }
 
 // ---------- Actions ----------
-async function refreshList() {
+async function refreshList(month) {
   const token = getToken();
   if (!token) {
     showToast("Defina o token em 🔑 Token", "err");
@@ -310,7 +324,7 @@ async function refreshList() {
   }
 
   showToast("Atualizando lista...", "");
-  const res = await apiGet("list", { limit: 30 });
+  const res = await apiGet("list", { limit: 30, ...(month ? { month } : {}) });
 
   if (!res || res.ok !== true) {
     showToast(res?.error || "Erro ao listar. Verifique token/implantação.", "err");
@@ -321,7 +335,6 @@ async function refreshList() {
   renderList(res.items || []);
   showToast("Lista atualizada ✅", "ok");
 
-  // também alimenta Análise (topcats + últimos) com o payload do list
   renderTopCatsFromList(res.items || [], "barsTopCats");
   renderAnaLastFromList(res.items || []);
 
@@ -339,9 +352,17 @@ async function refreshAnalysis(month) {
 }
 
 async function refreshAll() {
-  const listRes = await refreshList();
-  if (listRes?.month) await refreshAnalysis(listRes.month);
-  else await refreshAnalysis();
+  const month = getActiveMonth();
+
+  // mantém o select sincronizado
+  const sel = document.getElementById("monthSelect");
+  if (sel && sel.value !== month) sel.value = month;
+
+  const listRes = await refreshList(month);
+  const m = listRes?.month || month;
+  setActiveMonth(m);
+
+  await refreshAnalysis(m);
 }
 
 async function sendText() {
@@ -481,13 +502,22 @@ function init() {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendText();
   });
 
-  // tabs do seu index
-  document.getElementById("tabReg")?.addEventListener("click", () => setActiveTab("reg"));
-  document.getElementById("tabAna")?.addEventListener("click", () => setActiveTab("ana"));
-  document.getElementById("tabHis")?.addEventListener("click", () => setActiveTab("his"));
+  // tabs (IDs com hífen)
+  document.getElementById("tab-registrar")?.addEventListener("click", () => setActiveTab("reg"));
+  document.getElementById("tab-analise")?.addEventListener("click", () => setActiveTab("ana"));
+  document.getElementById("tab-historico")?.addEventListener("click", () => setActiveTab("his"));
+
+  // month select
+  const sel = document.getElementById("monthSelect");
+  if (sel) {
+    sel.value = getActiveMonth();
+    sel.addEventListener("change", () => {
+      setActiveMonth(sel.value);
+      refreshAll().catch(() => {});
+    });
+  }
 
   setActiveTab(getActiveTab());
-
   refreshAll().catch(() => {});
 }
 
