@@ -116,32 +116,93 @@
       </div>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <h3>Registrar</h3>
-        <div class="muted">Ex.: “passei no mercado hoje e deu 12,50 no débito pra alimentação”</div>
-        <textarea id="inputText" placeholder="Digite aqui..."></textarea>
-
-        <div class="actions">
-          <button class="btn primary" id="sendBtn">Enviar</button>
-          <button class="btn" id="helpBtn">Help</button>
-          <button class="btn" id="refreshBtn">Atualizar lista</button>
-        </div>
-
-        <div class="toast" id="toast" style="display:none;"></div>
-
-        <div class="actions" style="margin-top:12px;">
-          <span class="pill" id="netPill">🌐 verificando...</span>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Últimos lançamentos</h3>
-        <div class="muted" id="monthLabel">—</div>
-        <div class="list" id="list"></div>
+    <!-- Tabs -->
+    <div class="card" style="margin-top:14px; padding:10px 12px;">
+      <div class="tabs">
+        <button class="tab active" id="tabReg" data-view="viewReg">Registrar</button>
+        <button class="tab" id="tabAna" data-view="viewAna">Análise</button>
+        <button class="tab" id="tabHis" data-view="viewHis" disabled>Histórico</button>
       </div>
     </div>
-  </div>
+
+    <!-- VIEW: Registrar -->
+    <div id="viewReg" class="view show">
+      <div class="grid">
+        <div class="card">
+          <h3>Registrar</h3>
+          <div class="muted">Ex.: “passei no mercado hoje e deu 12,50 no débito pra alimentação”</div>
+          <textarea id="inputText" placeholder="Digite aqui..."></textarea>
+
+          <div class="actions">
+            <button class="btn primary" id="sendBtn">Enviar</button>
+            <button class="btn" id="helpBtn">Help</button>
+            <button class="btn" id="refreshBtn">Atualizar lista</button>
+          </div>
+
+          <div class="toast" id="toast" style="display:none;"></div>
+
+          <div class="actions" style="margin-top:12px;">
+            <span class="pill" id="netPill">🌐 verificando...</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Últimos lançamentos</h3>
+          <div class="muted" id="monthLabel">—</div>
+          <div class="list" id="list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: Análise -->
+    <div id="viewAna" class="view">
+      <div class="gridAna">
+        <div class="card big">
+          <div class="kpiTitle">Saldo</div>
+          <div class="kpiValue" id="kpiSaldo">—</div>
+          <div class="muted" id="kpiSaldoHint">—</div>
+        </div>
+
+        <div class="card big">
+          <div class="kpiTitle">Gastos do mês</div>
+          <div class="kpiValue" id="kpiGastosMes">—</div>
+          <div class="muted" id="kpiGastosMesHint">—</div>
+        </div>
+
+        <div class="card">
+          <div class="kpiTitle">Crédito</div>
+          <div class="kpiValue" id="kpiCredito">—</div>
+          <div class="muted">Somente lançamentos “Crédito” do mês</div>
+        </div>
+
+        <div class="card">
+          <div class="kpiTitle">Parcelados</div>
+          <div class="kpiValue" id="kpiParcelados">—</div>
+          <div class="muted">Somente parcelas do mês (não o total do contrato)</div>
+        </div>
+
+        <div class="card span2">
+          <div class="row" style="align-items:flex-end; justify-content:space-between;">
+            <div>
+              <h3 style="margin:0;">Top categorias</h3>
+              <div class="muted">Distribuição por categoria</div>
+            </div>
+            <div class="muted" id="anaMonthLabel">—</div>
+          </div>
+
+          <div class="bars" id="barsTopCats"></div>
+
+          <div class="muted" style="margin-top:10px;">
+            ↻ Atualiza ao clicar em “Atualizar lista” ou ao abrir a aba.
+          </div>
+        </div>
+
+        <div class="card span2">
+          <h3 style="margin:0 0 8px;">Últimos lançamentos</h3>
+          <div class="list" id="anaList"></div>
+        </div>
+      </div>
+    </div>
 
   <!-- Modal confirmação -->
   <div class="backdrop" id="backdrop">
@@ -165,6 +226,7 @@
   <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
