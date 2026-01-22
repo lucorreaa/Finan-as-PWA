@@ -1,4 +1,3 @@
-<script>
 /* =========================
    Finanças PWA (MVP) - app.js
    Compatível com o seu index.html
@@ -9,7 +8,7 @@
      POST ?action=confirm&token=...   body: { clientId, pendingId, name }
 ========================= */
 
-const API_BASE = "https://script.google.com/macros/s/AKfycbyVqBsnLUayiySfS71mEatjyBTGI7LBqnVEct-uMmyhBmiebaV-vpzNV6kuYJci4K0M/exec";
+const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev/";
 
 
 const LS_TOKEN = "fin_api_token";
@@ -348,4 +347,3 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
-</script>
