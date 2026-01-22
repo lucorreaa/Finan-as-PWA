@@ -1,5 +1,5 @@
 {
-  "name": "Finanças (MVP)",
+  "name": "Finanças MVP",
   "short_name": "Finanças",
   "start_url": ".",
   "scope": ".",
@@ -11,4 +11,3 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
-
