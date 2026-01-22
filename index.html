@@ -160,14 +160,15 @@
     <!-- Tabs -->
     <div class="card" style="margin-top:14px; padding:10px 12px;">
       <div class="tabs">
-        <button class="tab active" id="tabReg" data-view="viewReg">Registrar</button>
-        <button class="tab" id="tabAna" data-view="viewAna">Análise</button>
-        <button class="tab" id="tabHis" data-view="viewHis" disabled>Histórico</button>
+        <button class="tab active" id="tab-registrar">Registrar</button>
+        <button class="tab" id="tab-analise">Análise</button>
+        <button class="tab" id="tab-historico" disabled>Histórico</button>
+
       </div>
     </div>
 
     <!-- VIEW: Registrar -->
-    <div id="viewReg" class="view show">
+    <div id="view-registrar" class="view show">
       <div class="grid">
         <div class="card">
           <h3>Registrar</h3>
@@ -196,7 +197,7 @@
     </div>
 
     <!-- VIEW: Análise -->
-    <div id="viewAna" class="view">
+    <div id="view-analise" class="view">
       <div class="gridAna">
         <div class="card big">
           <div class="kpiTitle">Saldo</div>
@@ -260,7 +261,7 @@
       </div>
     </div>
     <!-- VIEW: Histórico (depois) -->
-    <div id="viewHis" class="view">
+    <div id="view-historico" class="view">
       <div class="card">
         <h3>Histórico</h3>
         <div class="muted">Vamos montar essa aba depois (filtro por mês, busca, etc.).</div>
@@ -290,6 +291,7 @@
   <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
