@@ -224,33 +224,29 @@
         </div>
 
         <div class="card span2">
-          <div class="row" style="align-items:flex-end; justify-content:space-between;">
-            <div>
-              <h3 style="margin:0;">Top categorias</h3>
-              <div class="muted">Distribuição por categoria</div>
-            </div>
-    <h3 style="margin:0;">Top categorias</h3>
-    <div class="muted">Distribuição por categoria</div>
+  <div class="row" style="align-items:flex-end; justify-content:space-between;">
+    <div>
+      <h3 style="margin:0;">Top categorias</h3>
+      <div class="muted">Distribuição por categoria</div>
+    </div>
+
+    <div class="row" style="gap:8px; align-items:center;">
+      <select id="monthSelect" style="padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text);">
+        <option>Janeiro</option><option>Fevereiro</option><option>Março</option><option>Abril</option>
+        <option>Maio</option><option>Junho</option><option>Julho</option><option>Agosto</option>
+        <option>Setembro</option><option>Outubro</option><option>Novembro</option><option>Dezembro</option>
+      </select>
+      <div class="muted" id="anaMonthLabel">—</div>
+    </div>
   </div>
 
-  <div class="row" style="gap:8px; align-items:center;">
-    <select id="monthSelect" style="padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text);">
-      <option>Janeiro</option><option>Fevereiro</option><option>Março</option><option>Abril</option>
-      <option>Maio</option><option>Junho</option><option>Julho</option><option>Agosto</option>
-      <option>Setembro</option><option>Outubro</option><option>Novembro</option><option>Dezembro</option>
-    </select>
-    <div class="muted" id="anaMonthLabel">—</div>
+  <div class="bars" id="barsTopCats"></div>
+
+  <div class="muted" style="margin-top:10px;">
+    ↻ Atualiza ao clicar em “Atualizar lista” ou ao abrir a aba.
   </div>
 </div>
 
-          </div>
-
-          <div class="bars" id="barsTopCats"></div>
-
-          <div class="muted" style="margin-top:10px;">
-            ↻ Atualiza ao clicar em “Atualizar lista” ou ao abrir a aba.
-          </div>
-        </div>
 
         <div class="card span2">
           <h3 style="margin:0 0 8px;">Últimos lançamentos</h3>
@@ -289,6 +285,7 @@
   <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
