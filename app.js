@@ -90,10 +90,11 @@ function toggleTheme() {
 
 // ---------- API (SEM header custom => evita preflight) ----------
 function buildUrl(action, params = {}) {
-  const token = getToken();
+  const token = getToken().trim();
   const qs = new URLSearchParams({ action, token, ...params });
-  return `${API_BASE}?${qs.toString()}`;
+  return `${API_BASE}/?${qs.toString()}`;
 }
+
 
 async function apiGet(action, params = {}) {
   const url = buildUrl(action, params);
@@ -347,4 +348,5 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
 
