@@ -1,51 +1,23 @@
 /* =========================
    Finanças PWA (MVP) - app.js
-   Compatível com o seu index.html (tabs + análise)
-   - Token via querystring (NÃO usa header custom)
-   - API esperada:
-     GET  ?action=list&limit=30&token=...
-     POST ?action=process&token=...   body: { clientId, text }
-     POST ?action=confirm&token=...   body: { clientId, pendingId, name }
+   - token via querystring
+   - GET  ?action=list&limit=30&month=Janeiro&token=...
+   - GET  ?action=totals&month=Janeiro&token=...
+   - POST ?action=process&token=...
+   - POST ?action=confirm&token=...
 ========================= */
 
-const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev"; // sem barra no final é ok
+const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev";
 
 const LS_TOKEN = "fin_api_token";
 const LS_THEME = "fin_theme";
-const LS_TAB = "fin_active_tab"; // viewReg | viewAna | viewHis
+const LS_TAB = "fin_active_tab"; // reg | ana | his
 
-let pendingState = null; // { pendingId, proposedName, message }
+let pendingState = null;
 
 const $ = (id) => document.getElementById(id);
 
-// ---------- Helpers ----------
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function parseBRL(v) {
-  // aceita "R$ 12,50" / "12,50" / 12.5
-  if (typeof v === "number") return v;
-  const s = String(v || "")
-    .replace("R$", "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .trim();
-  const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatBRL(n) {
-  const num = Number(n || 0);
-  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-// ---------- Toast ----------
+// ---------- UI helpers ----------
 function showToast(msg, type = "") {
   const el = $("toast");
   if (!el) return;
@@ -72,59 +44,84 @@ function setNetPill(online) {
   el.textContent = online ? "🟢 online" : "🔴 offline";
 }
 
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function parseBRL(v) {
+  if (typeof v === "number") return v;
+  const s = String(v || "")
+    .replace("R$", "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .trim();
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatBRL(n) {
+  const num = Number(n || 0);
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 // ---------- Token ----------
 function getToken() {
   return localStorage.getItem(LS_TOKEN) || "";
 }
-
 function setToken(v) {
   localStorage.setItem(LS_TOKEN, String(v || "").trim());
 }
-
 function promptToken() {
   const cur = getToken();
   const next = prompt("Cole seu API_TOKEN (o mesmo do Apps Script):", cur);
   if (next == null) return;
   setToken(next);
   showToast("Token salvo ✅", "ok");
-  refreshList().catch(() => {});
+  refreshAll().catch(() => {});
 }
 
 // ---------- Theme ----------
 function getTheme() {
   return localStorage.getItem(LS_THEME) || "dark";
 }
-
 function setTheme(theme) {
   localStorage.setItem(LS_THEME, theme);
   document.documentElement.dataset.theme = theme;
 }
-
 function toggleTheme() {
-  const cur = getTheme();
-  setTheme(cur === "dark" ? "light" : "dark");
+  setTheme(getTheme() === "dark" ? "light" : "dark");
 }
 
-// ---------- Tabs (bate com seu index) ----------
+// ---------- Tabs (index: tabReg/tabAna/tabHis + viewReg/viewAna/viewHis) ----------
 function getActiveTab() {
-  return localStorage.getItem(LS_TAB) || "viewReg";
+  return localStorage.getItem(LS_TAB) || "reg";
 }
 
-function setActiveTab(viewId) {
-  localStorage.setItem(LS_TAB, viewId);
+function setActiveTab(tab) {
+  localStorage.setItem(LS_TAB, tab);
 
-  const tabs = [
-    { btn: "tabReg", view: "viewReg" },
-    { btn: "tabAna", view: "viewAna" },
-    { btn: "tabHis", view: "viewHis" },
-  ];
+  const map = {
+    reg: { btn: "tabReg", view: "viewReg" },
+    ana: { btn: "tabAna", view: "viewAna" },
+    his: { btn: "tabHis", view: "viewHis" }
+  };
 
-  tabs.forEach(t => {
-    const b = document.getElementById(t.btn);
-    const v = document.getElementById(t.view);
-    if (b) b.classList.toggle("active", t.view === viewId);
-    if (v) v.classList.toggle("show", t.view === viewId);
+  Object.keys(map).forEach((k) => {
+    const b = document.getElementById(map[k].btn);
+    const v = document.getElementById(map[k].view);
+    if (b) b.classList.toggle("active", k === tab);
+    if (v) v.classList.toggle("show", k === tab);
   });
+
+  // quando abrir Análise, atualiza KPIs
+  if (tab === "ana") {
+    refreshAnalysis().catch(() => {});
+  }
 }
 
 // ---------- API ----------
@@ -154,7 +151,7 @@ async function apiPost(action, body = {}) {
   catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
 }
 
-// ---------- List (Registrar) ----------
+// ---------- Render list (Últimos lançamentos) ----------
 function renderList(items = []) {
   const box = $("list");
   if (!box) return;
@@ -194,93 +191,101 @@ function renderList(items = []) {
   }).join("");
 }
 
-// ---------- Análise ----------
-function renderAnalysis(res) {
-  const items = res?.items || [];
-  const month = res?.month || "—";
+// ---------- Análise (usa action=totals) ----------
+function renderAnalysisTotals(resTotals) {
+  const month = resTotals?.month || "—";
+  const t = resTotals?.totals || null;
 
-  const mes = items.filter(x => x.source === "MES");
-  const fixos = items.filter(x => x.source === "FIXOS");
-  const parc = items.filter(x => x.source === "PARCELADOS");
+  const monthLabel = document.getElementById("anaMonthLabel");
+  if (monthLabel) monthLabel.textContent = month;
 
-  const totalMes = mes.reduce((a, x) => a + parseBRL(x.valor), 0);
-  const totalFixos = fixos.reduce((a, x) => a + parseBRL(x.valor), 0);
-  const totalParc = parc.reduce((a, x) => a + parseBRL(x.valor), 0);
+  if (!t) return;
 
-  const totalCredito = mes
-    .filter(x => String(x.tipo || "").toLowerCase().includes("crédito"))
-    .reduce((a, x) => a + parseBRL(x.valor), 0);
+  const elSaldo = document.getElementById("kpiSaldo");
+  const elSaldoHint = document.getElementById("kpiSaldoHint");
+  if (elSaldo) elSaldo.textContent = formatBRL(t.saldo);
+  if (elSaldoHint) elSaldoHint.textContent = `Entradas ${formatBRL(t.entradas)} • Saídas ${formatBRL(t.saidas)}`;
 
-  // saldo estimado (por enquanto)
-  const saldoEstimado = 0 - (totalMes + totalFixos + totalParc);
+  const elGm = document.getElementById("kpiGastosMes");
+  const elGmHint = document.getElementById("kpiGastosMesHint");
+  if (elGm) elGm.textContent = formatBRL(t.gastosMes);
+  if (elGmHint) elGmHint.textContent = `Somente “Gastos do mês”`;
 
-  $("anaMonthLabel") && ($("anaMonthLabel").textContent = month);
+  // Vamos usar o card “Crédito” como FIXOS (pedido seu)
+  const elFixos = document.getElementById("kpiCredito");
+  if (elFixos) elFixos.textContent = formatBRL(t.fixos);
 
-  $("kpiGastosMes") && ($("kpiGastosMes").textContent = formatBRL(totalMes));
-  $("kpiCredito") && ($("kpiCredito").textContent = formatBRL(totalCredito));
-  $("kpiParcelados") && ($("kpiParcelados").textContent = formatBRL(totalParc));
-  $("kpiSaldo") && ($("kpiSaldo").textContent = formatBRL(saldoEstimado));
+  const elParcel = document.getElementById("kpiParcelados");
+  if (elParcel) elParcel.textContent = formatBRL(t.parcelados);
+}
 
-  $("kpiGastosMesHint") && ($("kpiGastosMesHint").textContent = "Somente lançamentos do mês (MES).");
-  $("kpiSaldoHint") && ($("kpiSaldoHint").textContent = "Saldo estimado (vamos conectar no saldo real depois).");
+function renderTopCatsFromList(items, targetId) {
+  // Top categorias (aprox) usando os itens do mês que vierem no list (não é perfeito),
+  // depois melhoramos com um endpoint próprio se você quiser.
+  const box = document.getElementById(targetId);
+  if (!box) return;
 
-  // top categorias (MES)
-  const catMap = new Map();
+  const mes = (items || []).filter(x => x.source === "MES");
+  if (!mes.length) {
+    box.innerHTML = `<div class="muted">—</div>`;
+    return;
+  }
+
+  const map = new Map();
   mes.forEach(x => {
     const cat = (x.categoria || "Outros").trim() || "Outros";
-    catMap.set(cat, (catMap.get(cat) || 0) + parseBRL(x.valor));
+    map.set(cat, (map.get(cat) || 0) + parseBRL(x.valor));
   });
 
-  const topCats = [...catMap.entries()]
+  const top = [...map.entries()]
     .map(([categoria, valor]) => ({ categoria, valor }))
     .sort((a,b) => b.valor - a.valor)
     .slice(0, 5);
 
-  const barsBox = $("barsTopCats");
-  if (barsBox) {
-    if (!topCats.length) {
-      barsBox.innerHTML = `<div class="muted">—</div>`;
-    } else {
-      const max = Math.max(...topCats.map(x => x.valor), 1);
-      barsBox.innerHTML = topCats.map(x => {
-        const pct = Math.round((x.valor / max) * 100);
-        return `
-          <div style="display:grid; grid-template-columns: 140px 1fr 120px; gap:10px; align-items:center; margin-top:10px;">
-            <div class="muted" style="font-weight:800;">${escapeHtml(x.categoria)}</div>
-            <div class="barTrack"><div class="barFill" style="width:${pct}%;"></div></div>
-            <div style="text-align:right; font-weight:900;">${formatBRL(x.valor)}</div>
-          </div>
-        `;
-      }).join("");
-    }
+  const max = Math.max(...top.map(x => x.valor), 1);
+
+  box.innerHTML = top.map(x => {
+    const pct = Math.round((x.valor / max) * 100);
+    return `
+      <div style="display:grid; grid-template-columns: 140px 1fr 110px; gap:10px; align-items:center; margin-top:10px;">
+        <div class="muted" style="font-weight:800;">${escapeHtml(x.categoria)}</div>
+        <div class="barTrack"><div class="barFill" style="width:${pct}%;"></div></div>
+        <div style="text-align:right; font-weight:900;">${formatBRL(x.valor)}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderAnaLastFromList(items) {
+  const box = document.getElementById("anaList");
+  if (!box) return;
+
+  const last = (items || []).slice(0, 6);
+  if (!last.length) {
+    box.innerHTML = `<div class="muted">—</div>`;
+    return;
   }
 
-  // últimos (6)
-  const lastBox = $("anaList");
-  if (lastBox) {
-    const last = items.slice(0, 6);
-    if (!last.length) lastBox.innerHTML = `<div class="muted">—</div>`;
-    else lastBox.innerHTML = last.map(it => {
-      const nome = escapeHtml(it.nome || "");
-      const data = escapeHtml(it.data || "");
-      const tipo = escapeHtml(it.tipo || "");
-      const categoria = escapeHtml(it.categoria || "");
-      const valor = escapeHtml(it.valor || "");
-      const source = escapeHtml(it.source || "");
-      return `
-        <div class="item">
-          <div>
-            <strong>${nome}</strong>
-            <div class="muted">${data} • ${tipo} • ${categoria}</div>
-          </div>
-          <div class="right">
-            <div class="tag">${source}</div>
-            <div style="margin-top:6px; font-weight:800;">${valor}</div>
-          </div>
+  box.innerHTML = last.map(it => {
+    const nome = escapeHtml(it.nome || "");
+    const data = escapeHtml(it.data || "");
+    const tipo = escapeHtml(it.tipo || "");
+    const categoria = escapeHtml(it.categoria || "");
+    const valor = escapeHtml(it.valor || "");
+    const source = escapeHtml(it.source || "");
+    return `
+      <div class="item">
+        <div>
+          <strong>${nome}</strong>
+          <div class="muted">${data} • ${tipo} • ${categoria}</div>
         </div>
-      `;
-    }).join("");
-  }
+        <div class="right">
+          <div class="tag">${source}</div>
+          <div style="margin-top:6px; font-weight:800;">${valor}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 // ---------- Modal confirmação ----------
@@ -291,7 +296,6 @@ function openConfirmModal(message, proposedName) {
   showConfirmToast("", "");
   $("backdrop").classList.add("show");
 }
-
 function closeConfirmModal() {
   $("backdrop").classList.remove("show");
   showConfirmToast("", "");
@@ -302,7 +306,7 @@ async function refreshList() {
   const token = getToken();
   if (!token) {
     showToast("Defina o token em 🔑 Token", "err");
-    return;
+    return null;
   }
 
   showToast("Atualizando lista...", "");
@@ -310,14 +314,34 @@ async function refreshList() {
 
   if (!res || res.ok !== true) {
     showToast(res?.error || "Erro ao listar. Verifique token/implantação.", "err");
-    return;
+    return null;
   }
 
   $("monthLabel").textContent = res.month || "—";
   renderList(res.items || []);
-  renderAnalysis(res);
-
   showToast("Lista atualizada ✅", "ok");
+
+  // também alimenta Análise (topcats + últimos) com o payload do list
+  renderTopCatsFromList(res.items || [], "barsTopCats");
+  renderAnaLastFromList(res.items || []);
+
+  return res;
+}
+
+async function refreshAnalysis(month) {
+  const token = getToken();
+  if (!token) return;
+
+  const res = await apiGet("totals", month ? { month } : {});
+  if (!res || res.ok !== true) return;
+
+  renderAnalysisTotals(res);
+}
+
+async function refreshAll() {
+  const listRes = await refreshList();
+  if (listRes?.month) await refreshAnalysis(listRes.month);
+  else await refreshAnalysis();
 }
 
 async function sendText() {
@@ -362,7 +386,7 @@ async function sendText() {
 
   $("inputText").value = "";
   showToast(res.message || "Salvo ✅", "ok");
-  await refreshList();
+  await refreshAll();
 }
 
 async function confirmPending() {
@@ -387,11 +411,7 @@ async function confirmPending() {
 
   let res;
   try {
-    res = await apiPost("confirm", {
-      clientId,
-      pendingId: pendingState.pendingId,
-      name
-    });
+    res = await apiPost("confirm", { clientId, pendingId: pendingState.pendingId, name });
   } catch (e) {
     showConfirmToast("Erro de rede (CORS/URL).", "err");
     return;
@@ -406,7 +426,7 @@ async function confirmPending() {
   showConfirmToast(res.message || "Confirmado ✅", "ok");
   closeConfirmModal();
   showToast("Salvo ✅", "ok");
-  await refreshList();
+  await refreshAll();
 }
 
 function cancelPending() {
@@ -430,50 +450,45 @@ function showHelp() {
     "",
     "Entradas:",
     "• recebi meu salário hoje 3000",
+    "",
+    "Consultas (ainda via texto):",
+    "• resumo",
+    "• saldo",
+    "• total do mes",
+    "• top categorias"
   ].join("\n");
-
   alert(ex);
 }
 
 // ---------- Init ----------
 function init() {
-  // tema
   setTheme(getTheme());
 
-  // net pill
   setNetPill(navigator.onLine);
   window.addEventListener("online", () => setNetPill(true));
   window.addEventListener("offline", () => setNetPill(false));
 
-  // binds registrar
   $("themeBtn")?.addEventListener("click", toggleTheme);
   $("tokenBtn")?.addEventListener("click", promptToken);
   $("sendBtn")?.addEventListener("click", sendText);
   $("helpBtn")?.addEventListener("click", showHelp);
-  $("refreshBtn")?.addEventListener("click", refreshList);
+  $("refreshBtn")?.addEventListener("click", refreshAll);
 
-  // modal
   $("confirmBtn")?.addEventListener("click", confirmPending);
   $("cancelPendingBtn")?.addEventListener("click", cancelPending);
 
-  // enter para enviar (Ctrl+Enter)
   $("inputText")?.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendText();
   });
 
-  // tabs
-  document.getElementById("tabReg")?.addEventListener("click", () => setActiveTab("viewReg"));
-  document.getElementById("tabAna")?.addEventListener("click", () => {
-    setActiveTab("viewAna");
-    refreshList().catch(() => {});
-  });
-  document.getElementById("tabHis")?.addEventListener("click", () => setActiveTab("viewHis"));
+  // tabs do seu index
+  document.getElementById("tabReg")?.addEventListener("click", () => setActiveTab("reg"));
+  document.getElementById("tabAna")?.addEventListener("click", () => setActiveTab("ana"));
+  document.getElementById("tabHis")?.addEventListener("click", () => setActiveTab("his"));
 
-  // ativa tab salva
   setActiveTab(getActiveTab());
 
-  // carrega lista inicial
-  refreshList().catch(() => {});
+  refreshAll().catch(() => {});
 }
 
 document.addEventListener("DOMContentLoaded", init);
