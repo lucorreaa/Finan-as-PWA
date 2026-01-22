@@ -1,3 +1,4 @@
+
 /* =========================
    Finanças PWA (MVP) - app.js
    Compatível com o seu index.html
@@ -10,11 +11,9 @@
 
 const API_BASE = "https://noisy-flower-1665.luca02699.workers.dev";
 
-
 const LS_TOKEN = "fin_api_token";
 const LS_THEME = "fin_theme";
 const LS_TAB = "fin_active_tab"; // registrar | analise | historico
-
 
 let pendingState = null; // { pendingId, proposedName, message }
 
@@ -71,7 +70,6 @@ function promptToken() {
   if (next == null) return;
   setToken(next);
   showToast("Token salvo ✅", "ok");
-  // tenta atualizar lista após salvar token
   refreshList().catch(() => {});
 }
 
@@ -90,6 +88,7 @@ function toggleTheme() {
   setTheme(cur === "dark" ? "light" : "dark");
 }
 
+// ---------- Tabs ----------
 function getActiveTab() {
   return localStorage.getItem(LS_TAB) || "registrar";
 }
@@ -98,18 +97,17 @@ function setActiveTab(tab) {
   localStorage.setItem(LS_TAB, tab);
 
   // botões
-  ["registrar","analise","historico"].forEach(t => {
+  ["registrar", "analise", "historico"].forEach((t) => {
     const btn = document.getElementById(`tab-${t}`);
     if (btn) btn.classList.toggle("active", t === tab);
   });
 
   // views
-  ["registrar","analise","historico"].forEach(t => {
+  ["registrar", "analise", "historico"].forEach((t) => {
     const view = document.getElementById(`view-${t}`);
-    if (view) view.style.display = (t === tab) ? "" : "none";
+    if (view) view.style.display = t === tab ? "" : "none";
   });
 }
-
 
 // ---------- API (SEM header custom => evita preflight) ----------
 function buildUrl(action, params = {}) {
@@ -118,29 +116,33 @@ function buildUrl(action, params = {}) {
   return `${API_BASE}/?${qs.toString()}`;
 }
 
-
 async function apiGet(action, params = {}) {
   const url = buildUrl(action, params);
-  const resp = await fetch(url); // sem headers
+  const resp = await fetch(url);
   const text = await resp.text();
-  try { return JSON.parse(text); }
-  catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Resposta inválida do servidor.", raw: text };
+  }
 }
 
 async function apiPost(action, body = {}) {
-  const url = buildUrl(action); // token vai na query
+  const url = buildUrl(action);
 
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" }, // ✅ evita preflight
-    body: JSON.stringify(body || {})
+    body: JSON.stringify(body || {}),
   });
 
   const text = await resp.text();
-  try { return JSON.parse(text); }
-  catch { return { ok: false, error: "Resposta inválida do servidor.", raw: text }; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Resposta inválida do servidor.", raw: text };
+  }
 }
-
 
 // ---------- Render list ----------
 function renderList(items = []) {
@@ -152,8 +154,42 @@ function renderList(items = []) {
     return;
   }
 
-   function parseBRL(v) {
-  // aceita "R$ 12,50" / "12,50" / 12.5
+  box.innerHTML = items
+    .map((it) => {
+      const nome = escapeHtml(it.nome || "");
+      const data = escapeHtml(it.data || "");
+      const tipo = escapeHtml(it.tipo || "");
+      const categoria = escapeHtml(it.categoria || "");
+      const valor = escapeHtml(it.valor || "");
+      const source = escapeHtml(it.source || "");
+
+      const extra = it.extra
+        ? `<div class="muted" style="margin-top:6px;">
+             ${escapeHtml(it.extra.parcelas || "")}x • Total ${escapeHtml(
+            it.extra.total || ""
+          )}
+           </div>`
+        : "";
+
+      return `
+        <div class="item">
+          <div>
+            <strong>${nome}</strong>
+            <div class="muted">${data} • ${tipo} • ${categoria}</div>
+            ${extra}
+          </div>
+          <div class="right">
+            <div class="tag">${source}</div>
+            <div style="margin-top:6px; font-weight:800;">${valor}</div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+// ---------- ANÁLISE ----------
+function parseBRL(v) {
   if (typeof v === "number") return v;
   const s = String(v || "")
     .replace("R$", "")
@@ -169,24 +205,20 @@ function formatBRL(n) {
 }
 
 function buildAnalysis(items = []) {
-  // itens vêm com source: "MES" | "FIXOS" | "PARCELADOS"
-  const mes = items.filter(x => x.source === "MES");
-  const fixos = items.filter(x => x.source === "FIXOS");
-  const parc = items.filter(x => x.source === "PARCELADOS");
+  const mes = items.filter((x) => x.source === "MES");
+  const fixos = items.filter((x) => x.source === "FIXOS");
+  const parc = items.filter((x) => x.source === "PARCELADOS");
 
-  // somas
   const totalMes = mes.reduce((acc, x) => acc + parseBRL(x.valor), 0);
   const totalFixos = fixos.reduce((acc, x) => acc + parseBRL(x.valor), 0);
   const totalParc = parc.reduce((acc, x) => acc + parseBRL(x.valor), 0);
 
-  // "Crédito" no mês
   const totalCredito = mes
-    .filter(x => String(x.tipo || "").toLowerCase().includes("crédito"))
+    .filter((x) => String(x.tipo || "").toLowerCase().includes("crédito"))
     .reduce((acc, x) => acc + parseBRL(x.valor), 0);
 
-  // top categorias do mês
   const catMap = new Map();
-  mes.forEach(x => {
+  mes.forEach((x) => {
     const cat = (x.categoria || "Outros").trim() || "Outros";
     const v = parseBRL(x.valor);
     catMap.set(cat, (catMap.get(cat) || 0) + v);
@@ -194,7 +226,7 @@ function buildAnalysis(items = []) {
 
   const topCats = [...catMap.entries()]
     .map(([categoria, valor]) => ({ categoria, valor }))
-    .sort((a,b) => b.valor - a.valor)
+    .sort((a, b) => b.valor - a.valor)
     .slice(0, 5);
 
   return {
@@ -203,22 +235,18 @@ function buildAnalysis(items = []) {
     totalParc,
     totalCredito,
     topCats,
-    ultimos: items.slice(0, 6) // usa os mais recentes do payload
+    ultimos: items.slice(0, 6),
   };
 }
 
 function renderAnalysis(res) {
-  // res = { month, items }
   const items = res?.items || [];
   const month = res?.month || "—";
-
   const a = buildAnalysis(items);
 
-  // labels
   const elMonth = document.getElementById("analiseMonthLabel");
   if (elMonth) elMonth.textContent = month;
 
-  // cards
   const elGastosMes = document.getElementById("cardGastosMes");
   if (elGastosMes) elGastosMes.textContent = formatBRL(a.totalMes);
 
@@ -231,82 +259,56 @@ function renderAnalysis(res) {
   const elFixos = document.getElementById("cardFixos");
   if (elFixos) elFixos.textContent = formatBRL(a.totalFixos);
 
-  // top categorias (lista simples por enquanto)
   const topBox = document.getElementById("topCats");
   if (topBox) {
     if (!a.topCats.length) {
       topBox.innerHTML = `<div class="muted">—</div>`;
     } else {
-      const max = Math.max(...a.topCats.map(x => x.valor), 1);
-      topBox.innerHTML = a.topCats.map(x => {
-        const pct = Math.round((x.valor / max) * 100);
-        return `
-          <div class="catRow">
-            <div class="catName">${escapeHtml(x.categoria)}</div>
-            <div class="catBar"><div class="catFill" style="width:${pct}%;"></div></div>
-            <div class="catVal">${formatBRL(x.valor)}</div>
-          </div>
-        `;
-      }).join("");
+      const max = Math.max(...a.topCats.map((x) => x.valor), 1);
+      topBox.innerHTML = a.topCats
+        .map((x) => {
+          const pct = Math.round((x.valor / max) * 100);
+          return `
+            <div class="catRow">
+              <div class="catName">${escapeHtml(x.categoria)}</div>
+              <div class="catBar"><div class="catFill" style="width:${pct}%;"></div></div>
+              <div class="catVal">${formatBRL(x.valor)}</div>
+            </div>
+          `;
+        })
+        .join("");
     }
   }
 
-  // últimos (reaproveita layout do renderList, mas numa box própria)
   const lastBox = document.getElementById("analiseLast");
   if (lastBox) {
     const last = a.ultimos || [];
     if (!last.length) lastBox.innerHTML = `<div class="muted">—</div>`;
-    else lastBox.innerHTML = last.map(it => {
-      const nome = escapeHtml(it.nome || "");
-      const data = escapeHtml(it.data || "");
-      const tipo = escapeHtml(it.tipo || "");
-      const categoria = escapeHtml(it.categoria || "");
-      const valor = escapeHtml(it.valor || "");
-      const source = escapeHtml(it.source || "");
-      return `
-        <div class="item">
-          <div>
-            <strong>${nome}</strong>
-            <div class="muted">${data} • ${tipo} • ${categoria}</div>
-          </div>
-          <div class="right">
-            <div class="tag">${source}</div>
-            <div style="margin-top:6px; font-weight:800;">${valor}</div>
-          </div>
-        </div>
-      `;
-    }).join("");
+    else
+      lastBox.innerHTML = last
+        .map((it) => {
+          const nome = escapeHtml(it.nome || "");
+          const data = escapeHtml(it.data || "");
+          const tipo = escapeHtml(it.tipo || "");
+          const categoria = escapeHtml(it.categoria || "");
+          const valor = escapeHtml(it.valor || "");
+          const source = escapeHtml(it.source || "");
+
+          return `
+            <div class="item">
+              <div>
+                <strong>${nome}</strong>
+                <div class="muted">${data} • ${tipo} • ${categoria}</div>
+              </div>
+              <div class="right">
+                <div class="tag">${source}</div>
+                <div style="margin-top:6px; font-weight:800;">${valor}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
   }
-}
-
-  box.innerHTML = items.map(it => {
-    const nome = escapeHtml(it.nome || "");
-    const data = escapeHtml(it.data || "");
-    const tipo = escapeHtml(it.tipo || "");
-    const categoria = escapeHtml(it.categoria || "");
-    const valor = escapeHtml(it.valor || "");
-    const source = escapeHtml(it.source || "");
-
-    const extra = it.extra
-      ? `<div class="muted" style="margin-top:6px;">
-           ${escapeHtml(it.extra.parcelas || "")}x • Total ${escapeHtml(it.extra.total || "")}
-         </div>`
-      : "";
-
-    return `
-      <div class="item">
-        <div>
-          <strong>${nome}</strong>
-          <div class="muted">${data} • ${tipo} • ${categoria}</div>
-          ${extra}
-        </div>
-        <div class="right">
-          <div class="tag">${source}</div>
-          <div style="margin-top:6px; font-weight:800;">${valor}</div>
-        </div>
-      </div>
-    `;
-  }).join("");
 }
 
 // ---------- Modal confirmação ----------
@@ -314,7 +316,6 @@ function openConfirmModal(message, proposedName) {
   pendingState = pendingState || {};
   $("confirmMsg").textContent = message || "Confirme para salvar.";
   $("nameEdit").value = proposedName || "";
-
   showConfirmToast("", "");
   $("backdrop").classList.add("show");
 }
@@ -336,7 +337,6 @@ async function refreshList() {
   const res = await apiGet("list", { limit: 30 });
 
   if (!res || res.ok !== true) {
-    // se vier CORS, geralmente aqui cai como erro de rede e nem chega JSON
     showToast(res?.error || "Erro ao listar. Verifique token/implantação.", "err");
     return;
   }
@@ -346,10 +346,6 @@ async function refreshList() {
   renderAnalysis(res);
 
   showToast("Lista atualizada ✅", "ok");
-   window.__lastItems = res.items || [];
-window.__lastMonth = res.month || "—";
-renderAnalysis(window.__lastItems, window.__lastMonth);
-
 }
 
 async function sendText() {
@@ -366,7 +362,7 @@ async function sendText() {
   }
 
   showToast("Enviando...", "");
-  const clientId = "web"; // pode virar um ID do device no futuro
+  const clientId = "web";
   let res;
 
   try {
@@ -377,11 +373,10 @@ async function sendText() {
   }
 
   if (res?.needsConfirm) {
-    // esperado: { needsConfirm:true, pendingId, proposedName, message }
     pendingState = {
       pendingId: res.pendingId,
       proposedName: res.proposedName || "",
-      message: res.message || "Confirme para salvar."
+      message: res.message || "Confirme para salvar.",
     };
     openConfirmModal(pendingState.message, pendingState.proposedName);
     showToast("Precisa confirmar o nome/descrição.", "err");
@@ -420,11 +415,7 @@ async function confirmPending() {
 
   let res;
   try {
-    res = await apiPost("confirm", {
-      clientId,
-      pendingId: pendingState.pendingId,
-      name
-    });
+    res = await apiPost("confirm", { clientId, pendingId: pendingState.pendingId, name });
   } catch (e) {
     showConfirmToast("Erro de rede (CORS/URL).", "err");
     return;
@@ -468,7 +459,7 @@ function showHelp() {
     "• resumo",
     "• saldo",
     "• total do mes",
-    "• top categorias"
+    "• top categorias",
   ].join("\n");
 
   alert(ex);
@@ -476,45 +467,32 @@ function showHelp() {
 
 // ---------- Init ----------
 function init() {
-  // tema
   setTheme(getTheme());
 
-  // net pill
   setNetPill(navigator.onLine);
   window.addEventListener("online", () => setNetPill(true));
   window.addEventListener("offline", () => setNetPill(false));
 
-  // bind
-  $("themeBtn").addEventListener("click", toggleTheme);
-  $("tokenBtn").addEventListener("click", promptToken);
-  $("sendBtn").addEventListener("click", sendText);
-  $("helpBtn").addEventListener("click", showHelp);
-  $("refreshBtn").addEventListener("click", refreshList);
+  $("themeBtn")?.addEventListener("click", toggleTheme);
+  $("tokenBtn")?.addEventListener("click", promptToken);
+  $("sendBtn")?.addEventListener("click", sendText);
+  $("helpBtn")?.addEventListener("click", showHelp);
+  $("refreshBtn")?.addEventListener("click", refreshList);
 
-  $("confirmBtn").addEventListener("click", confirmPending);
-  $("cancelPendingBtn").addEventListener("click", cancelPending);
+  $("confirmBtn")?.addEventListener("click", confirmPending);
+  $("cancelPendingBtn")?.addEventListener("click", cancelPending);
 
-  // enter para enviar (Ctrl+Enter)
-  $("inputText").addEventListener("keydown", (e) => {
+  $("inputText")?.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendText();
   });
 
-   const btnReg = document.getElementById("tab-registrar");
-const btnAna = document.getElementById("tab-analise");
-const btnHis = document.getElementById("tab-historico");
+  document.getElementById("tab-registrar")?.addEventListener("click", () => setActiveTab("registrar"));
+  document.getElementById("tab-analise")?.addEventListener("click", () => setActiveTab("analise"));
+  document.getElementById("tab-historico")?.addEventListener("click", () => setActiveTab("historico"));
 
-if (btnReg) btnReg.addEventListener("click", () => setActiveTab("registrar"));
-if (btnAna) btnAna.addEventListener("click", () => setActiveTab("analise"));
-if (btnHis) btnHis.addEventListener("click", () => setActiveTab("historico"));
+  setActiveTab(getActiveTab());
 
-// ativa a tab salva no localStorage
-setActiveTab(getActiveTab());
-
-  // tentativa de carregar lista
   refreshList().catch(() => {});
 }
 
 document.addEventListener("DOMContentLoaded", init);
-
-
-
