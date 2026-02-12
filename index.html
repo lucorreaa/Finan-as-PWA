@@ -103,44 +103,74 @@
     .hr{ height:1px; background:var(--border); margin:12px 0; }
 
     .tabs{ display:flex; gap:10px; }
-.tab{
-  border:1px solid var(--border);
-  background:transparent;
-  color:var(--muted);
-  padding:10px 12px;
-  border-radius:12px;
-  cursor:pointer;
-  font-weight:800;
-}
-.tab.active{
-  background:rgba(37,99,235,.15);
-  color:var(--text);
-  border-color:rgba(37,99,235,.35);
-}
-.view{ display:none; }
-.view.show{ display:block; }
+    .tab{
+      border:1px solid var(--border);
+      background:transparent;
+      color:var(--muted);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:800;
+    }
+    .tab.active{
+      background:rgba(37,99,235,.15);
+      color:var(--text);
+      border-color:rgba(37,99,235,.35);
+    }
+    .view{ display:none; }
+    .view.show{ display:block; }
 
-/* Análise */
-.gridAna{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:14px;
-  margin-top:14px;
-}
-.span2{ grid-column: span 2; }
-.kpiTitle{ color:var(--muted); font-weight:800; font-size:13px; }
-.kpiValue{ font-size:28px; font-weight:900; margin-top:6px; }
+    /* Análise */
+    .gridAna{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:14px;
+      margin-top:14px;
+    }
+    .span2{ grid-column: span 2; }
 
-.barTrack{
-  height:12px;
-  border:1px solid var(--border);
-  border-radius:999px;
-  overflow:hidden;
-}
-.barFill{
-  height:100%;
-  background:rgba(34,197,94,.55);
-}
+    .kpiTitle{ color:var(--muted); font-weight:800; font-size:13px; }
+    .kpiValue{ font-size:28px; font-weight:900; margin-top:6px; }
+
+    .barTrack{
+      height:12px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      overflow:hidden;
+    }
+    .barFill{
+      height:100%;
+      background:rgba(34,197,94,.55);
+    }
+
+    /* =========================
+       FIX LAYOUT DOS CARDS KPI
+       ========================= */
+
+    /* cards KPI com altura e alinhamento fixos */
+    .card.big{
+      display:grid;
+      grid-template-rows:auto 1fr auto; /* título | valor | hint */
+      min-height:110px;                /* trava altura */
+    }
+
+    /* valor do KPI responsivo e sem quebrar layout */
+    .kpiValue{
+      font-size:clamp(20px, 3.2vw, 28px);
+      font-weight:900;
+      line-height:1.1;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      margin-top:6px;
+    }
+
+    /* hint do KPI sempre alinhado */
+    #kpiSaldoHint,
+    #kpiGastosMesHint{
+      font-size:12px;
+      min-height:14px;
+    }
 
   </style>
 </head>
@@ -163,7 +193,6 @@
         <button class="tab active" id="tab-registrar">Registrar</button>
         <button class="tab" id="tab-analise">Análise</button>
         <button class="tab" id="tab-historico" disabled>Histórico</button>
-
       </div>
     </div>
 
@@ -211,43 +240,41 @@
           <div class="muted" id="kpiGastosMesHint">—</div>
         </div>
 
-        <div class="card">
+        <div class="card big">
           <div class="kpiTitle">Fixos</div>
           <div class="kpiValue" id="kpiCredito">—</div>
           <div class="muted">Somente gastos fixos do mês</div>
         </div>
 
-
-        <div class="card">
+        <div class="card big">
           <div class="kpiTitle">Parcelados</div>
           <div class="kpiValue" id="kpiParcelados">—</div>
           <div class="muted">Somente parcelas do mês (não o total do contrato)</div>
         </div>
 
         <div class="card span2">
-  <div class="row" style="align-items:flex-end; justify-content:space-between;">
-    <div>
-      <h3 style="margin:0;">Top categorias</h3>
-      <div class="muted">Distribuição por categoria</div>
-    </div>
+          <div class="row" style="align-items:flex-end; justify-content:space-between;">
+            <div>
+              <h3 style="margin:0;">Top categorias</h3>
+              <div class="muted">Distribuição por categoria</div>
+            </div>
 
-    <div class="row" style="gap:8px; align-items:center;">
-      <select id="monthSelect" style="padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text);">
-        <option>Janeiro</option><option>Fevereiro</option><option>Março</option><option>Abril</option>
-        <option>Maio</option><option>Junho</option><option>Julho</option><option>Agosto</option>
-        <option>Setembro</option><option>Outubro</option><option>Novembro</option><option>Dezembro</option>
-      </select>
-      <div class="muted" id="anaMonthLabel">—</div>
-    </div>
-  </div>
+            <div class="row" style="gap:8px; align-items:center;">
+              <select id="monthSelect" style="padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text);">
+                <option>Janeiro</option><option>Fevereiro</option><option>Março</option><option>Abril</option>
+                <option>Maio</option><option>Junho</option><option>Julho</option><option>Agosto</option>
+                <option>Setembro</option><option>Outubro</option><option>Novembro</option><option>Dezembro</option>
+              </select>
+              <div class="muted" id="anaMonthLabel">—</div>
+            </div>
+          </div>
 
-  <div class="bars" id="barsTopCats"></div>
+          <div class="bars" id="barsTopCats"></div>
 
-  <div class="muted" style="margin-top:10px;">
-    ↻ Atualiza ao clicar em “Atualizar lista” ou ao abrir a aba.
-  </div>
-</div>
-
+          <div class="muted" style="margin-top:10px;">
+            ↻ Atualiza ao clicar em “Atualizar lista” ou ao abrir a aba.
+          </div>
+        </div>
 
         <div class="card span2">
           <h3 style="margin:0 0 8px;">Últimos lançamentos</h3>
@@ -255,6 +282,7 @@
         </div>
       </div>
     </div>
+
     <!-- VIEW: Histórico (depois) -->
     <div id="view-historico" class="view">
       <div class="card">
@@ -283,18 +311,7 @@
       <div class="toast" id="confirmToast" style="display:none;"></div>
     </div>
   </div>
+
   <script src="app.js"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
